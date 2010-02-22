@@ -2,33 +2,137 @@
 <interface>
   <requires lib="gtk+" version="2.16"/>
   <!-- interface-naming-policy project-wide -->
-  <object class="GtkWindow" id="taskPaper">
+  <object class="GtkWindow" id="taskpaper">
     <property name="width_request">480</property>
     <property name="height_request">600</property>
     <property name="title" translatable="yes">Untitled</property>
+    <signal name="destroy_event" handler="quit"/>
+    <signal name="delete_event" handler="quit"/>
     <child>
       <object class="GtkVBox" id="vbox1">
         <property name="visible">True</property>
         <property name="orientation">vertical</property>
         <property name="spacing">5</property>
         <child>
+          <object class="GtkMenuBar" id="menubar1">
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkMenuItem" id="menuitem1">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">_Arquivo</property>
+                <property name="use_underline">True</property>
+                <child type="submenu">
+                  <object class="GtkMenu" id="menu1">
+                    <property name="visible">True</property>
+                    <child>
+                      <object class="GtkImageMenuItem" id="imagemenuitem5">
+                        <property name="label">gtk-quit</property>
+                        <property name="visible">True</property>
+                        <property name="use_underline">True</property>
+                        <property name="use_stock">True</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuItem" id="menuitem2">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">_Editar</property>
+                <property name="use_underline">True</property>
+                <child type="submenu">
+                  <object class="GtkMenu" id="menu2">
+                    <property name="visible">True</property>
+                    <child>
+                      <object class="GtkImageMenuItem" id="imagemenuitem6">
+                        <property name="label">gtk-cut</property>
+                        <property name="visible">True</property>
+                        <property name="use_underline">True</property>
+                        <property name="use_stock">True</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkImageMenuItem" id="imagemenuitem7">
+                        <property name="label">gtk-copy</property>
+                        <property name="visible">True</property>
+                        <property name="use_underline">True</property>
+                        <property name="use_stock">True</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkImageMenuItem" id="imagemenuitem8">
+                        <property name="label">gtk-paste</property>
+                        <property name="visible">True</property>
+                        <property name="use_underline">True</property>
+                        <property name="use_stock">True</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkImageMenuItem" id="imagemenuitem9">
+                        <property name="label">gtk-delete</property>
+                        <property name="visible">True</property>
+                        <property name="use_underline">True</property>
+                        <property name="use_stock">True</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuItem" id="menuitem3">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">_Ver</property>
+                <property name="use_underline">True</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuItem" id="menuitem4">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">Aj_uda</property>
+                <property name="use_underline">True</property>
+                <child type="submenu">
+                  <object class="GtkMenu" id="menu3">
+                    <property name="visible">True</property>
+                    <child>
+                      <object class="GtkImageMenuItem" id="imagemenuitem10">
+                        <property name="label">gtk-about</property>
+                        <property name="visible">True</property>
+                        <property name="use_underline">True</property>
+                        <property name="use_stock">True</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
           <object class="GtkAlignment" id="alignment1">
             <property name="visible">True</property>
             <property name="top_padding">2</property>
-            <property name="left_padding">2</property>
-            <property name="right_padding">2</property>
             <child>
               <object class="GtkEntry" id="search">
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="invisible_char">&#x25CF;</property>
+                <property name="primary_icon_stock">gtk-find</property>
+                <property name="secondary_icon_stock">gtk-cancel</property>
+                <property name="secondary_icon_activatable">True</property>
+                <signal name="icon_press" handler="clear_search_box"/>
               </object>
             </child>
           </object>
           <packing>
             <property name="expand">False</property>
             <property name="fill">False</property>
-            <property name="position">0</property>
+            <property name="position">1</property>
           </packing>
         </child>
         <child>
@@ -37,19 +141,19 @@
             <property name="can_focus">True</property>
             <property name="hscrollbar_policy">automatic</property>
             <property name="vscrollbar_policy">automatic</property>
+            <property name="shadow_type">in</property>
             <child>
               <object class="GtkTextView" id="taskList">
                 <property name="visible">True</property>
-                <property name="can_focus">True</property>
+                <property name="has_focus">True</property>
                 <property name="wrap_mode">word-char</property>
-                <signal name="delete_from_cursor" handler="analyze_input" after="yes"/>
-                <signal name="insert_at_cursor" handler="analyze_input" after="yes"/>
-                <signal name="key_release_event" handler="analyze_input"/>
+                <property name="left_margin">20</property>
+                <signal name="key_release_event" handler="received_input"/>
               </object>
             </child>
           </object>
           <packing>
-            <property name="position">1</property>
+            <property name="position">2</property>
           </packing>
         </child>
       </object>

@@ -1,21 +1,96 @@
 import gtk
 import re
-import StringIO
 
 class Taskpaper:
     def __init__(self):
-        self.task_list = TaskList()
-        self.parser    = Parser()
+        self.patterns  = { "project" : re.compile("(.*?):\s*$"),
+                           "task" : re.compile("^\s*-\s+(.*)"),
+                           "tags" : re.compile("(@(\w+)(?:\((.*?)\))?)") }
         self.changed   = False
         self.builder   = gtk.Builder()
         self.builder.add_from_file("taskpaper.glade")
+        self.window    = self.builder.get_object("taskpaper")
         self.taskList  = self.builder.get_object("taskList")
         self.builder.connect_signals(self, None)
-        self.builder.get_object("taskPaper").show_all()
+        self.window.show_all()
+        self.projects = [] # a list of line indices. Current project
+                           # is the nearest preceding line in this list.
+        self.create_formatting_tags(self.taskList.get_buffer())
+        self.tag_table = {}
 
-    def analyze_input(self, *textview):
-        buffer    = textview.get_buffer()
-        #line_iter = buffer.get_iter_at_line(buffer.get_line())
+    def clear_search_box(self, *args):
+        self.builder.get_object("search").set_text("")
+        
+    def create_formatting_tags(self, buffer):
+        buffer.create_tag("project", font="Sans Bold 14", foreground="black")
+        buffer.create_tag("task", foreground="black")
+        buffer.create_tag("note", foreground="grey"),
+        buffer.create_tag("done", font="Sans Italic", foreground="darkgrey",
+                          strikethrough="true"),
+        buffer.create_tag("tag", font="Sans Italic 10", foreground="darkgrey")
+
+    def quit(self, *args):
+        gtk.main_quit()
+        
+    def received_input(self, textview, event):
+        key_name = gtk.gdk.keyval_name(event.keyval)
+        if not key_name in ('Down', 'Up', 'Left', 'Right'):
+            buffer = textview.get_buffer()
+            curr   = buffer.get_iter_at_mark(buffer.get_insert())
+            row    = curr.get_line()
+            col    = curr.get_line_offset()
+            self.apply_formatting(buffer, curr.get_line())
+    
+    def apply_formatting(self, buffer, line_number):
+        start = buffer.get_iter_at_line(line_number)
+        end   = buffer.get_iter_at_line(line_number)
+        end.forward_to_line_end()
+        buffer.remove_all_tags(start, end)
+        text  = buffer.get_slice(start, end)
+        if self.is_project(text):
+            self.mark_as_project(line_number)
+            buffer.apply_tag_by_name("project", start, end)
+        else:
+            if self.line_is_project(line_number):
+                self.unmark_as_project(line_number)
+                
+            if self.is_task(text):
+                buffer.apply_tag_by_name("task", start, end)
+                tags = self.parse_tags(text, line_number)
+                if len([tag for tag in tags if re.match("done", tag[1])]) > 0:
+                    buffer.apply_tag_by_name("done", start, end)
+            else:
+                buffer.apply_tag_by_name("note", start, end)
+
+    def mark_as_project(self, line_number):
+        if not line_number in self.projects:
+            self.projects.append(line_number)
+            
+    def line_is_project(self, line_number):
+        return line_number in self.projects
+
+    def unmark_as_project(self, line_number):
+        self.projects.remove(line_number)
+        
+    def is_project(self, text):
+        return self.patterns["project"].match(text) != None
+        
+    def is_task(self, text):
+        return self.patterns["task"].match(text) != None
+
+    def parse_tags(self, task, line_number):
+        tags = self.patterns["tags"].findall(task)
+        for _, tag, annotations in tags:
+            if not self.tag_table.has_key(tag): self.tag_table[tag] = []
+            self.tag_table[tag].append(line_number)
+        return [(t[0], t[1]) for t in tags]
+
+    def load_tasks_file(self, filename):
+        tasks  = open(filename).read()
+        buffer = self.taskList.get_buffer()
+        buffer.set_text(tasks)
+        for line in range(buffer.get_line_count()):
+            self.apply_formatting(buffer, line)
 
     def create_project(self, project_name):
         project = Project(project_name)
@@ -35,111 +110,7 @@ class Taskpaper:
         # TODO: update view
         pass
 
-class TaskList:
-    def __init__(self):
-        self.projects = []
-    
-    def add_project(self, project):
-        self.projects.append(project)
-
-    def get_archive(self):
-        archive = filter(lambda p: p.name == 'Archive', self.projects)
-        if len(archive) == 0:
-            archive = Project('Archive')
-            self.projects.append(archive)
-        return archive
-
-    def __str__(self):
-        return "".join([str(p) for p in self.projects])
-        
-class Project:
-    def __init__(self, name):
-        self.name     = name
-        self.children = []
-
-    def add_note(self, note):
-        self.children.append(note)
-        
-    def add_task(self, task):
-        self.children.append(task)
-
-    def remove_note(self, note):
-        self.children.remove(note)
-    
-    def remove_task(self, task):
-        self.children.remove(task)
-
-    def __str__(self):
-        return "%s:\n%s" % (self.name,
-                            "\n".join([str(c) for c in self.children]))
-
-class Content:
-    def __init__(self, text=None, tags=[]):
-        self.text = text
-        self.tags = tags
-        self.done = "done" in [t.name for t in tags]
-
-    def is_done(self):
-        return self.done
-
-class Task(Content):                          
-    def __str__(self):
-        return "- %s %s" % (self.text,
-                            " ".join([str(tag) for tag in self.tags]))
-
-class Note(Content):
-    def __str__(self):
-        return self.text
-
-class Tag:
-    def __init__(self, name, annotations=[]):
-        self.name = name
-        self.annotations = annotations
-    
-    def __str__(self):
-        if len(self.annotations) > 0:
-            return "@%s(%s)" % (self.name, " ".join(self.annotations))
-        else:
-            return "@%s" % (self.name, )
-        
-class Parser:
-    def __init__(self):
-        self.project = re.compile("(.*?):\s*$")
-        self.task    = re.compile("^\s*-\s+(.*)")
-
-    def parse(self, filename):
-        task_list = TaskList()
-        project   = None
-        note      = None
-        
-        for line in open(filename):
-            is_project = self.project.match(line)
-            if is_project:
-                project = Project(is_project.groups()[0])
-                task_list.add_project(project)
-            else:
-                is_task = self.task.match(line)
-                if is_task:
-                    project.add_task(self.parse_task(is_task.groups()[0]))
-                else:
-                    note = Note(line.strip() or "\n")
-                    project.add_note(note)
-
-        return task_list
-
-    def parse_task(self, text):
-        parts = text.split("@")
-        return Task(parts[0].strip(),
-                    [self.parse_tag(tag) for tag in parts[1:len(parts)]])
-    
-    def parse_tag(self, tag):
-        tag, annotations = re.match("(\w+)(?:\((.*?)\))?", tag.strip()).groups()
-        if annotations is None: annotations = ""
-        return Tag(tag, annotations.split(" "))
-        
 if __name__ == "__main__":
-    p = Parser()
-    tl = p.parse("sample.taskpaper")
-    print tl
-    #tp = Taskpaper()
-    #gtk.main()
+    tp = Taskpaper()
+    tp.load_tasks_file("sample.taskpaper")
+    gtk.main()
