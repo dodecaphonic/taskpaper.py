@@ -79,7 +79,11 @@ class Taskpaper:
                 self.object_line.append(note)
                 
         elif not key_name in ("Down", "Up", "Left", "Right"):
-            self.apply_formatting(buffer, curr)
+            start = buffer.get_iter_at_line(curr.get_line())
+            end   = buffer.get_iter_at_line(curr.get_line())
+            end.forward_to_line_end()
+            self.update_object_map(buffer, start, end)
+            self.apply_formatting(buffer, start, end)
 
         return False
 
@@ -87,49 +91,53 @@ class Taskpaper:
         buffer = self.task_view.get_buffer()
         curr = buffer.get_iter_at_mark(buffer.get_insert())
         self.set_current_project(nearest_to=curr.get_line())
-    
-    def apply_formatting(self, buffer, iter, loading=False):
-        line_number = iter.get_line()
-        start = buffer.get_iter_at_line(iter.get_line())
-        end   = buffer.get_iter_at_line(iter.get_line())
-        end.forward_to_line_end()
-        buffer.remove_all_tags(start, end)
-        text  = buffer.get_slice(start, end)
 
-        if self.is_project(text):
-            if not loading:
-                project = self.add_project(text, line_number)
-                self.set_current_project(project)
+    def update_object_map(self, buffer, iter):
+        pass
+    
+    def apply_formatting(self, buffer, iter):
+        pass
+        # line_number = iter.get_line()
+        # start = buffer.get_iter_at_line(iter.get_line())
+        # end   = buffer.get_iter_at_line(iter.get_line())
+        # end.forward_to_line_end()
+        # buffer.remove_all_tags(start, end)
+        # text  = buffer.get_slice(start, end)
+
+        # if self.is_project(text):
+        #     if not loading:
+        #         project = self.add_project(text, line_number)
+        #         self.set_current_project(project)
             
-            buffer.apply_tag_by_name("project", start, end)
-        else:
-            if self.line_is_project(line_number):
-                self.remove_project(line_number)
-                self.set_current_project(nearest_to=line_number)
+        #     buffer.apply_tag_by_name("project", start, end)
+        # else:
+        #     if self.line_is_project(line_number):
+        #         self.remove_project(line_number)
+        #         self.set_current_project(nearest_to=line_number)
                 
-            if self.is_task(text):
-                buffer.apply_tag_by_name("task", start, end)
-                task = None
+        #     if self.is_task(text):
+        #         buffer.apply_tag_by_name("task", start, end)
+        #         task = None
                 
-                try:
-                    object = self.object_line[line_number]
-                    task  = self.parser.parse_task(text)
-                    self.object_line[line_number] = task
-                    # place = self.current_project.tasks.index(task)
-                    # self.current_project.tasks[place] = updated
+        #         try:
+        #             object = self.object_line[line_number]
+        #             task  = self.parser.parse_task(text)
+        #             self.object_line[line_number] = task
+        #             # place = self.current_project.tasks.index(task)
+        #             # self.current_project.tasks[place] = updated
                     
-                except:
-                    task = self.parser.parse_task(text)
-                    if self.current_project:
-                        self.current_project.add_task(task)
-                    else:
-                        self.task_list.add_task(task)
-                    self.object_line.append(task)
+        #         except:
+        #             task = self.parser.parse_task(text)
+        #             if self.current_project:
+        #                 self.current_project.add_task(task)
+        #             else:
+        #                 self.task_list.add_task(task)
+        #             self.object_line.append(task)
                     
-                if len([tag for tag in task.tags if tag.name == "done"]) > 0:
-                    buffer.apply_tag_by_name("done", start, end)
-            else:
-                buffer.apply_tag_by_name("note", start, end)
+        #         if len([tag for tag in task.tags if tag.name == "done"]) > 0:
+        #             buffer.apply_tag_by_name("done", start, end)
+        #     else:
+        #         buffer.apply_tag_by_name("note", start, end)
 
     def line_is_project(self, line_number):
         return isinstance(self.object_line, format.Project)
@@ -145,7 +153,9 @@ class Taskpaper:
         buffer = self.task_view.get_buffer()
         buffer.set_text(str(self.task_list))
         for line in range(buffer.get_line_count()):
-            self.apply_formatting(buffer, buffer.get_iter_at_line(line), True)
+            iter = buffer.get_iter_at_line(line)
+            self.update_object_map(buffer, iter)
+            self.apply_formatting(buffer, iter)
 
     def create_project(self, project_name):
         project = Project(project_name)
