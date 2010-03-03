@@ -3,21 +3,23 @@ import re
 import os
 import sys
 from datetime import datetime
+from taskpaperconfig import get_data_path
 
 Project, Task, Note = 0, 1, 2
 
 class Taskpaper:
     def __init__(self):
         # These regexes determine what type of content is being input.
-        self.project = re.compile("\s*(?!-)(.*?):\s*$")
+        self.project = re.compile("\s*(?!-)(.*?):")
         self.task = re.compile("^\s*-\s+(.*)")
         self.tag  = re.compile("(@(\w+)(?:\((.*?)\))?)")
 
-        self.current_file = None # File currently being worked on.
+        self.current_file = self.open_most_recent_file()
         self.changed      = False   # Have tasks been changed?
         self.user_action  = False
+        ui_filename = os.path.join(get_data_path(), "ui", "Taskpaper.ui")
         self.builder      = gtk.Builder()
-        self.builder.add_from_file("taskpaper.glade")
+        self.builder.add_from_file(ui_filename)
         self.window       = self.builder.get_object("taskpaper")
         self.task_view    = self.builder.get_object("taskView")
         self.builder.connect_signals(self, None)
@@ -28,7 +30,14 @@ class Taskpaper:
         self.redo = []
         #self.indenting = {}
 
-    def clear_search_box(self, *args):
+    def open_most_recent_file(self):
+        """
+        Opens file last worked on. If nothing was being done (what a shame,
+        considering), returns None.
+        """
+        pass
+
+    def on_clear_search_box(self, *args):
         self.builder.get_object("search").set_text("")
         
     def create_formatting_tags(self, buffer):
@@ -42,20 +51,28 @@ class Taskpaper:
     def quit(self, *args):
         gtk.main_quit()
 
-    def before_input(self, textview, event):
+    def on_taskView_key_press_event(self, textview, event):
         key_name = gtk.gdk.keyval_name(event.keyval)
         if key_name == "Tab":
             return True
 
         return False
 
-    def move_cursor(self, *textview):
-        #print "MC: ", textview
-        pass
-
-    def insert_date(self, *w):
+    def add_tag_to_entry(self, text):
         buffer = self.task_view.get_buffer()
-        buffer.insert_at_cursor(datetime.now().strftime("%Y-%m-%d"))
+        iter = buffer.get_iter_at_mark(buffer.get_insert())
+        iter.forward_to_line_end()
+        buffer.insert(iter, " " + text)
+
+    def on_insert_date(self, *w):
+        self.add_tag_to_entry("@date(%s)" %
+                              (datetime.now().strftime("%Y-%m-%d"), ))
+        
+    def on_tagToday_activate(self, *w):
+        self.add_tag_to_entry("@today")
+        
+    def on_tagDone_activate(self, *w):
+        self.add_tag_to_entry("@done")
 
     def insert_text(self, buffer, iter, text, length):
         if self.user_action:
@@ -63,6 +80,7 @@ class Taskpaper:
                               iter.get_offset() +
                                 len(re.findall(".", text)), text))
             self.redo = []
+
         self.set_changed(True)
         
     def delete_text(self, buffer, start, end):
@@ -72,14 +90,23 @@ class Taskpaper:
                               end.get_offset(), text))
         self.set_changed(True)
 
-    def copy_text(self, *w):
-        print "CoT:", w
+    def on_copy_text(self, *w):
+        self.task_view.get_buffer().copy_clipboard(gtk.clipboard_get())
 
-    def cut_text(self, *w):
-        print "CuT:", w
+    def on_cut_text(self, *w):
+        self.task_view.get_buffer().cut_clipboard(gtk.clipboard_get(),
+                                  self.task_view.get_editable())
 
-    def paste_text(self, *w):
-        print "PT:", w
+    def on_paste_text(self, *w):
+        clipboard = gtk.clipboard_get()
+        clipboard.request_text(self.format_text_from_clipboard)
+
+    def format_text_from_clipboard(self, clipboard, text, data):
+        buffer = self.task_view.get_buffer()
+        buffer.insert_at_cursor(text)
+
+    def on_taskView_insert_at_cursor(self, *w):
+        print w
         
     def begin_user_action(self, *w):
         self.user_action = True
@@ -129,7 +156,7 @@ class Taskpaper:
         buffer = self.task_view.get_buffer()
         self.task_view.scroll_mark_onscreen(buffer.get_mark(mark_str))
     
-    def after_input(self, textview, event):
+    def on_taskView_key_release_event(self, textview, event):
         buffer = textview.get_buffer()
         curr   = buffer.get_iter_at_mark(buffer.get_insert())
         key_name = gtk.gdk.keyval_name(event.keyval)
@@ -140,10 +167,6 @@ class Taskpaper:
         elif not key_name in ("Down", "Up", "Left", "Right"):
             self.apply_formatting(buffer, curr)
         return False
-
-    def task_view_clicked(self, click):
-        buffer = self.task_view.get_buffer()
-        curr = buffer.get_iter_at_mark(buffer.get_insert())
 
     def apply_formatting(self, buffer, iter):
         line_number = iter.get_line()
@@ -160,14 +183,14 @@ class Taskpaper:
             if self.is_task(text):
                 self.previous_entity = Task
                 buffer.apply_tag_by_name("task", start, end)
-                if self.is_task_done(text):
-                    done_end = buffer.get_iter_at_line(start.get_line())
-                    while done_end.get_char() != "@": done_end.forward_char()
-                    done_end.backward_char() # unnecessary, TODO: make it decent
-                    buffer.apply_tag_by_name("done", start, done_end)
             else:
                 self.previous_entity = Note
                 buffer.apply_tag_by_name("note", start, end)
+        if self.is_entry_done(text):
+            done_end = buffer.get_iter_at_line(start.get_line())
+            while done_end.get_char() != "@": done_end.forward_char()
+            done_end.backward_char() # unnecessary, TODO: make it decent
+            buffer.apply_tag_by_name("done", start, done_end)
 
     def is_project(self, text):
         return self.project.match(text) != None
@@ -175,7 +198,7 @@ class Taskpaper:
     def is_task(self, text):
         return self.task.match(text) != None
 
-    def is_task_done(self, text):
+    def is_entry_done(self, text):
         return "done" in self.find_tags(text)
 
     def find_tags(self, text):
@@ -204,7 +227,7 @@ class Taskpaper:
             self.window.set_title("%s" % (filename, ))
         self.changed = changed
 
-    def archive_done_tasks(self, w):
+    def on_archive_done_tasks(self, w):
         buffer = self.task_view.get_buffer()
         iter   = buffer.get_start_iter()
         removed = []
@@ -246,14 +269,14 @@ class Taskpaper:
                 return project
         return None
 
-    def open_tasks_dialog(self, *item):
+    def on_open_tasks(self, *item):
         if self.changed:
             pass #
         else:
             pass
         self.builder.get_object("openFile").show_all()
 
-    def open_save_tasks_dialog(self, *item):
+    def on_save_tasks(self, *item):
         if self.current_file:
             self.save_tasks_file(self.current_file)
         else:
@@ -270,7 +293,7 @@ class Taskpaper:
         self.current_file = filename
         self.set_changed(False)
         
-    def open_save_as_new_tasks_dialog(self, *item):
+    def on_save_as_new_tasks(self, *item):
         print item
 
     def cancel_dialog(self, dialog):
