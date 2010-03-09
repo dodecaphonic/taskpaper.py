@@ -279,7 +279,7 @@
                     <child>
                       <object class="GtkLabel" id="searchLabel">
                         <property name="visible">True</property>
-                        <property name="label" translatable="yes">Busca:</property>
+                        <property name="label" translatable="yes">Search:</property>
                       </object>
                     </child>
                   </object>
@@ -325,7 +325,6 @@
                 <property name="left_margin">20</property>
                 <property name="buffer">taskBuffer</property>
                 <signal name="key_press_event" handler="on_taskView_key_press_event"/>
-                <signal name="key_release_event" handler="on_taskView_key_release_event"/>
                 <signal name="paste_clipboard" handler="on_paste_text"/>
               </object>
             </child>
@@ -344,8 +343,8 @@
     <property name="type_hint">dialog</property>
     <property name="transient_for">taskpaper</property>
     <property name="has_separator">False</property>
-    <property name="action">save</property>
     <property name="do_overwrite_confirmation">True</property>
+    <property name="action">save</property>
     <signal name="file_activated" handler="perform_dialog_action" object="saveFile"/>
     <child internal-child="vbox">
       <object class="GtkVBox" id="dialog-vbox1">
@@ -406,7 +405,7 @@
     </action-widgets>
   </object>
   <object class="GtkTextBuffer" id="taskBuffer">
-    <signal name="insert_text" handler="insert_text"/>
+    <signal name="insert_text" handler="insert_text" after="yes"/>
     <signal name="begin_user_action" handler="begin_user_action"/>
     <signal name="delete_range" handler="delete_text"/>
     <signal name="end_user_action" handler="end_user_action"/>

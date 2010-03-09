@@ -13,8 +13,6 @@ class Taskpaper:
         self.project = re.compile("\s*(?!-)(.*?):")
         self.task = re.compile("^\s*-\s+(.*)")
         self.tag  = re.compile("(@(\w+)(?:\((.*?)\))?)")
-
-        self.current_file = self.open_most_recent_file()
         self.changed      = False   # Have tasks been changed?
         self.user_action  = False
         ui_filename = os.path.join(get_data_path(), "ui", "Taskpaper.ui")
@@ -22,20 +20,28 @@ class Taskpaper:
         self.builder.add_from_file(ui_filename)
         self.window       = self.builder.get_object("taskpaper")
         self.task_view    = self.builder.get_object("taskView")
+        self.create_formatting_tags(self.get_current_buffer())
+        self.current_file = self.open_most_recent_file()
         self.builder.connect_signals(self, None)
         self.window.show_all()
         self.previous_entity = None # Last parsed entity type
-        self.create_formatting_tags(self.task_view.get_buffer())
         self.undo = []
         self.redo = []
-        #self.indenting = {}
 
     def open_most_recent_file(self):
         """
         Opens file last worked on. If nothing was being done (what a shame,
         considering), returns None.
         """
-        pass
+        try:
+            prefs = os.path.join(os.path.expanduser("~"), ".taskpaper")
+            filename = None
+            with open(prefs) as last:
+                filename = last.read().strip()
+                self.load_tasks_file(filename)
+            return filename
+        except:
+            return None
 
     def on_clear_search_box(self, *args):
         self.builder.get_object("search").set_text("")
@@ -49,6 +55,10 @@ class Taskpaper:
         buffer.create_tag("tag", font="Sans Italic 10", foreground="darkgrey")
 
     def quit(self, *args):
+        if self.current_file:
+            with open(os.path.join(os.path.expanduser("~"),
+                                   ".taskpaper"), "w") as last:
+                last.write(self.current_file)
         gtk.main_quit()
 
     def on_taskView_key_press_event(self, textview, event):
@@ -58,8 +68,11 @@ class Taskpaper:
 
         return False
 
+    def get_current_buffer(self):
+        return self.task_view.get_buffer()
+
     def add_tag_to_entry(self, text):
-        buffer = self.task_view.get_buffer()
+        buffer = self.get_current_buffer()
         iter = buffer.get_iter_at_mark(buffer.get_insert())
         iter.forward_to_line_end()
         buffer.insert(iter, " " + text)
@@ -74,6 +87,10 @@ class Taskpaper:
     def on_tagDone_activate(self, *w):
         self.add_tag_to_entry("@done")
 
+    def text_changed(self, buffer, start, end):
+        self.apply_formatting(buffer, start, end)
+        self.set_changed(True)
+
     def insert_text(self, buffer, iter, text, length):
         if self.user_action:
             self.undo.append(("insert_text", iter.get_offset(),
@@ -81,20 +98,22 @@ class Taskpaper:
                                 len(re.findall(".", text)), text))
             self.redo = []
 
-        self.set_changed(True)
+        offset_iter = buffer.get_iter_at_offset(iter.get_offset() + length)
+        self.text_changed(buffer, iter, offset_iter)
         
     def delete_text(self, buffer, start, end):
         if self.user_action:
             text = buffer.get_text(start, end)
             self.undo.append(("delete_range", start.get_offset(),
                               end.get_offset(), text))
-        self.set_changed(True)
+
+        self.text_changed(buffer, start, end)
 
     def on_copy_text(self, *w):
-        self.task_view.get_buffer().copy_clipboard(gtk.clipboard_get())
+        self.get_current_buffer().copy_clipboard(gtk.clipboard_get())
 
     def on_cut_text(self, *w):
-        self.task_view.get_buffer().cut_clipboard(gtk.clipboard_get(),
+        self.get_current_buffer().cut_clipboard(gtk.clipboard_get(),
                                   self.task_view.get_editable())
 
     def on_paste_text(self, *w):
@@ -102,11 +121,12 @@ class Taskpaper:
         clipboard.request_text(self.format_text_from_clipboard)
 
     def format_text_from_clipboard(self, clipboard, text, data):
-        buffer = self.task_view.get_buffer()
+        buffer = self.get_current_buffer()
         buffer.insert_at_cursor(text)
 
     def on_taskView_insert_at_cursor(self, *w):
-        print w
+        #print w
+        pass
         
     def begin_user_action(self, *w):
         self.user_action = True
@@ -119,7 +139,7 @@ class Taskpaper:
             return
         
         action = self.undo.pop()
-        buffer = self.task_view.get_buffer()
+        buffer = self.get_current_buffer()
         start_iter = None
         
         if action[0] == "insert_text":
@@ -138,7 +158,7 @@ class Taskpaper:
             return
 
         action = self.redo.pop()
-        buffer = self.task_view.get_buffer()
+        buffer = self.get_current_buffer()
         start_iter = None
         
         if action[0] == "insert_text":
@@ -153,7 +173,7 @@ class Taskpaper:
         self.undo.append(action)
 
     def iter_on_screen(self, iter, mark_str):
-        buffer = self.task_view.get_buffer()
+        buffer = self.get_current_buffer()
         self.task_view.scroll_mark_onscreen(buffer.get_mark(mark_str))
     
     def on_taskView_key_release_event(self, textview, event):
@@ -168,30 +188,55 @@ class Taskpaper:
             self.apply_formatting(buffer, curr)
         return False
 
-    def apply_formatting(self, buffer, iter):
-        line_number = iter.get_line()
-        start = buffer.get_iter_at_line(iter.get_line())
-        end   = buffer.get_iter_at_line(iter.get_line())
-        end.forward_to_line_end()
-        buffer.remove_all_tags(start, end)
-        text  = buffer.get_slice(start, end)
-
-        if self.is_project(text):
-            self.previous_entity = Project
-            buffer.apply_tag_by_name("project", start, end)
-        else:
-            if self.is_task(text):
-                self.previous_entity = Task
-                buffer.apply_tag_by_name("task", start, end)
+    def apply_formatting(self, buffer, start_iter, end_iter=None):
+        line_number = start_iter.get_line()
+        lines = []
+        
+        if end_iter:
+            if start_iter.get_line() == end_iter.get_line():
+                lines.append(line_number)
             else:
-                self.previous_entity = Note
-                buffer.apply_tag_by_name("note", start, end)
-        if self.is_entry_done(text):
-            done_end = buffer.get_iter_at_line(start.get_line())
-            while done_end.get_char() != "@": done_end.forward_char()
-            done_end.backward_char() # unnecessary, TODO: make it decent
-            buffer.apply_tag_by_name("done", start, done_end)
+                lines = range(start_iter.get_line(), end_iter.get_line() + 1)
+            #print lines
+        else:
+            lines.append(line_number)
+            
+        for line_number in lines:
+            start = buffer.get_iter_at_line(line_number)
+            end   = buffer.get_iter_at_line(line_number)
+            end.forward_to_line_end()
+            buffer.remove_all_tags(start, end)
+            text = buffer.get_slice(start, end)
+            
+            if self.is_project(text):
+                self.previous_entity = Project
+                buffer.apply_tag_by_name("project", start, end)
+            else:
+                if self.is_task(text):
+                    self.previous_entity = Task
+                    buffer.apply_tag_by_name("task", start, end)
+                else:
+                    self.previous_entity = Note
+                    buffer.apply_tag_by_name("note", start, end)
+            if self.is_entry_done(text):
+                done_end = buffer.get_iter_at_line(start.get_line())
+                while done_end.get_char() != "@": done_end.forward_char()
+                done_end.backward_char() # unnecessary, TODO: make it decent
+                buffer.apply_tag_by_name("done", start, done_end)
 
+    def create_project_map(self):
+        buffer = self.get_current_buffer()
+        iter = buffer.get_start_iter()
+        self.projects = {}
+        
+        while not iter.is_end():
+            text = self.get_text_from_line(iter)
+            if self.is_project(text):
+                project_name = self.project.match(text).groups()[0]
+                self.projects[iter.get_line()] = project_name
+
+        return self.projects
+                    
     def is_project(self, text):
         return self.project.match(text) != None
         
@@ -206,8 +251,9 @@ class Taskpaper:
 
     def load_tasks_file(self, filename):
         tasks = open(filename).read()
-        buffer = self.task_view.get_buffer()
+        buffer = self.get_current_buffer()
         buffer.set_text(tasks)
+
         for line in range(buffer.get_line_count()):
             iter = buffer.get_iter_at_line(line)
             self.apply_formatting(buffer, iter)
@@ -228,45 +274,76 @@ class Taskpaper:
         self.changed = changed
 
     def on_archive_done_tasks(self, w):
-        buffer = self.task_view.get_buffer()
+        buffer = self.get_current_buffer()
         iter   = buffer.get_start_iter()
         removed = []
+
+        last_valid = iter.get_line()
         
         while not iter.is_end():
-            line_end = buffer.get_iter_at_line(iter.get_line())
-            line_end.forward_to_line_end()
-            text = buffer.get_slice(iter, line_end)
-            if self.is_task(text) and self.is_task_done(text):
-                project = self.find_closest_project(buffer, iter)
-                removed.append((project, text))
+            text = self.get_text_from_line(iter)
+            project = self.find_closest_project(buffer, iter)
+            print project, text
+            if project != "Archive" and self.is_entry_done(text):
                 line = iter.get_line() 
+                line_end = buffer.get_iter_at_line(line)
+                line_end.forward_to_line_end()
+                removed.append((project, text))
                 buffer.delete(iter, line_end)
-                iter = buffer.get_iter_at_line(line - 1)
+                iter = buffer.get_iter_at_line(last_valid)
+
+            last_valid = iter.get_line()
             iter.forward_line()
 
         archive_iter = self.get_archive_insertion_point()
-        
+
         for project, task in removed:
             text = task
             if project: text = "%s @project(%s)" % (text, project, )
-            buffer.insert(archive_iter, text)
-        
-    def mark_as_done(self, task):
-        # TODO: update view
-        pass
+            buffer.insert(archive_iter, "\n" + text)
 
     def get_archive_insertion_point(self):
-        return self.task_view.get_buffer().get_end_iter()
+        buffer = self.get_current_buffer()
+        iter   = buffer.get_start_iter()
+        line   = None
+        
+        while not iter.is_end():
+            text = self.get_text_from_line(iter)
+            if re.match("Archive", text) or line != None:
+                line = iter.get_line()
+            iter.forward_line()
+
+        if line:
+            iter.forward_to_line_end()
+            buffer.insert(iter, "\n")
+        else:
+            iter = buffer.get_end_iter()
+            buffer.insert(iter, "\n\nArchive:")
+
+        return buffer.get_end_iter()
+
+    def get_text_from_line(self, iter):
+        """
+        Gets text from the line pointed at by `iter`.
+        Arguments:
+        - `iter`: gtk.TextIter whose line will be used
+        """
+        buffer     = iter.get_buffer()
+        line_start = buffer.get_iter_at_line(iter.get_line())
+        line_end   = buffer.get_iter_at_line(iter.get_line())
+        line_end.forward_to_line_end()
+        
+        return buffer.get_slice(line_start, line_end)
 
     def find_closest_project(self, buffer, iter):
-        while not iter.is_start():
-            iter.backward_line()
-            line_end = buffer.get_iter_at_line(iter.get_line())
-            line_end.forward_to_line_end()
-            text = buffer.get_slice(iter, line_end)
+        project_iter = buffer.get_iter_at_line(iter.get_line())
+        while not project_iter.is_start():
+            text = self.get_text_from_line(iter)
             if self.is_project(text):
                 project = self.project.match(text).groups()[0]
                 return project
+            project_iter.backward_line()
+
         return None
 
     def on_open_tasks(self, *item):
@@ -284,7 +361,7 @@ class Taskpaper:
             dialog.show_all()
 
     def save_tasks_file(self, filename):
-        buffer = self.task_view.get_buffer()
+        buffer = self.get_current_buffer()
         text = buffer.get_text(buffer.get_start_iter(),
                                buffer.get_end_iter())
         file = open(filename, "w")
@@ -294,13 +371,14 @@ class Taskpaper:
         self.set_changed(False)
         
     def on_save_as_new_tasks(self, *item):
-        print item
+        #print item
+        pass
 
     def cancel_dialog(self, dialog):
         dialog.hide()
 
     def perform_dialog_action(self, dialog):
-        buffer = self.task_view.get_buffer()
+        buffer = self.get_current_buffer()
         dlg_name = dialog.get_name()
         if dlg_name == "saveFile":
             self.save_tasks_file(dialog.get_filename())
