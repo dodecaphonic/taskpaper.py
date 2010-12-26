@@ -357,6 +357,7 @@
   </object>
   <object class="GtkAccelGroup" id="accelerators"/>
   <object class="GtkFileChooserDialog" id="saveFile">
+    <property name="name">saveFile</property>
     <property name="border_width">5</property>
     <property name="title" translatable="yes">Save...</property>
     <property name="type_hint">dialog</property>
@@ -430,6 +431,7 @@
     <signal name="end_user_action" handler="end_user_action"/>
   </object>
   <object class="GtkFileChooserDialog" id="openFile">
+    <property name="name">openFile</property>
     <property name="border_width">5</property>
     <property name="title" translatable="yes">Open...</property>
     <property name="type_hint">dialog</property>

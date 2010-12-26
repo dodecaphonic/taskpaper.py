@@ -95,7 +95,7 @@ class Taskpaper:
         if self.user_action:
             self.undo.append(("insert_text", iter.get_offset(),
                               iter.get_offset() +
-                                len(re.findall(".", text)), text))
+                                len(text), text))
             self.redo = []
 
         offset_iter = buffer.get_iter_at_offset(iter.get_offset() + length)
@@ -393,6 +393,7 @@ class Taskpaper:
     def perform_dialog_action(self, dialog):
         buffer = self.get_current_buffer()
         dlg_name = dialog.get_name()
+
         if dlg_name == "saveFile":
             self.save_tasks_file(dialog.get_filename())
         elif dlg_name == "openFile":
