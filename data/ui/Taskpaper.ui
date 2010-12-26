@@ -25,6 +25,16 @@
                   <object class="GtkMenu" id="menu1">
                     <property name="visible">True</property>
                     <child>
+                      <object class="GtkImageMenuItem" id="gtk-new">
+                        <property name="label">gtk-new</property>
+                        <property name="visible">True</property>
+                        <property name="tooltip_text" translatable="yes">New Tasks file</property>
+                        <property name="use_underline">True</property>
+                        <property name="use_stock">True</property>
+                        <property name="accel_group">accelerators</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="GtkImageMenuItem" id="gtk-open">
                         <property name="label">gtk-open</property>
                         <property name="visible">True</property>
@@ -234,6 +244,14 @@
                         <signal name="activate" handler="on_archive_done_tasks"/>
                       </object>
                     </child>
+                    <child>
+                      <object class="GtkMenuItem" id="dumpArchiveFile">
+                        <property name="visible">True</property>
+                        <property name="tooltip_text" translatable="yes">Dump Archive to File</property>
+                        <property name="label" translatable="yes">Dump Archive to File...</property>
+                        <property name="use_underline">True</property>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>
@@ -323,6 +341,7 @@
                 <property name="has_focus">True</property>
                 <property name="wrap_mode">word-char</property>
                 <property name="left_margin">20</property>
+                <property name="right_margin">20</property>
                 <property name="buffer">taskBuffer</property>
                 <signal name="key_press_event" handler="on_taskView_key_press_event"/>
                 <signal name="paste_clipboard" handler="on_paste_text"/>

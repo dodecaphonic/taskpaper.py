@@ -10,7 +10,7 @@ Project, Task, Note = 0, 1, 2
 class Taskpaper:
     def __init__(self):
         # These regexes determine what type of content is being input.
-        self.project = re.compile("\s*(?!-)(.*?):")
+        self.project = re.compile("\s*(?!-)(.*?):\s*$")
         self.task = re.compile("^\s*-\s+(.*)")
         self.tag  = re.compile("(@(\w+)(?:\((.*?)\))?)")
         self.changed      = False   # Have tasks been changed?
@@ -49,10 +49,10 @@ class Taskpaper:
     def create_formatting_tags(self, buffer):
         buffer.create_tag("project", font="Sans Bold 14", foreground="black")
         buffer.create_tag("task", foreground="black")
-        buffer.create_tag("note", foreground="grey"),
+        buffer.create_tag("note", foreground="darkgrey"),
         buffer.create_tag("done", font="Sans Italic", foreground="darkgrey",
                           strikethrough="true"),
-        buffer.create_tag("tag", font="Sans Italic 10", foreground="darkgrey")
+        buffer.create_tag("tag", font="Sans Bold 10", foreground="darkgrey")
 
     def quit(self, *args):
         if self.current_file:
@@ -125,7 +125,6 @@ class Taskpaper:
         buffer.insert_at_cursor(text)
 
     def on_taskView_insert_at_cursor(self, *w):
-        #print w
         pass
         
     def begin_user_action(self, *w):
@@ -197,10 +196,9 @@ class Taskpaper:
                 lines.append(line_number)
             else:
                 lines = range(start_iter.get_line(), end_iter.get_line() + 1)
-            #print lines
         else:
             lines.append(line_number)
-            
+        
         for line_number in lines:
             start = buffer.get_iter_at_line(line_number)
             end   = buffer.get_iter_at_line(line_number)
@@ -218,11 +216,27 @@ class Taskpaper:
                 else:
                     self.previous_entity = Note
                     buffer.apply_tag_by_name("note", start, end)
+
+            before_tags = buffer.get_iter_at_line(start.get_line())
+            while before_tags.get_char() != "@" and not before_tags.equal(end):
+                before_tags.forward_char()
+            before_tags.backward_char()
+            
             if self.is_entry_done(text):
-                done_end = buffer.get_iter_at_line(start.get_line())
-                while done_end.get_char() != "@": done_end.forward_char()
-                done_end.backward_char() # unnecessary, TODO: make it decent
-                buffer.apply_tag_by_name("done", start, done_end)
+                buffer.apply_tag_by_name("done", start, before_tags)
+
+            before_tags.forward_char()
+            iter = before_tags
+            tag_begin = None
+            
+            while not iter.equal(end):
+                char = iter.get_char()
+                if char == "@":
+                    tag_begin = iter
+                elif char == " " and tag_begin:
+                    buffer.apply_tag_by_name("tag", tag_begin, iter)
+                    tag_begin = None
+                iter.forward_char()
 
     def create_project_map(self):
         buffer = self.get_current_buffer()
@@ -338,7 +352,7 @@ class Taskpaper:
     def find_closest_project(self, buffer, iter):
         project_iter = buffer.get_iter_at_line(iter.get_line())
         while not project_iter.is_start():
-            text = self.get_text_from_line(iter)
+            text = self.get_text_from_line(project_iter)
             if self.is_project(text):
                 project = self.project.match(text).groups()[0]
                 return project
@@ -348,7 +362,7 @@ class Taskpaper:
 
     def on_open_tasks(self, *item):
         if self.changed:
-            pass #
+            pass
         else:
             pass
         self.builder.get_object("openFile").show_all()
@@ -371,7 +385,6 @@ class Taskpaper:
         self.set_changed(False)
         
     def on_save_as_new_tasks(self, *item):
-        #print item
         pass
 
     def cancel_dialog(self, dialog):
